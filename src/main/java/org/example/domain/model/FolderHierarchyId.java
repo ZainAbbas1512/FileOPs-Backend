@@ -1,11 +1,16 @@
 package org.example.domain.model;
 
+import lombok.Getter;
+import lombok.Setter;
+
 import javax.persistence.Column;
 import javax.persistence.Embeddable;
 import java.io.Serializable;
 import java.util.Objects;
 import java.util.UUID;
 
+@Setter
+@Getter
 @Embeddable
 public class FolderHierarchyId implements Serializable {
 
@@ -22,20 +27,6 @@ public class FolderHierarchyId implements Serializable {
         this.ancestorId = ancestorId;
     }
 
-    // Getters and Setters
-
-    public UUID getFolderId() {
-        return folderId;
-    }
-    public void setFolderId(UUID folderId) {
-        this.folderId = folderId;
-    }
-    public UUID getAncestorId() {
-        return ancestorId;
-    }
-    public void setAncestorId(UUID ancestorId) {
-        this.ancestorId = ancestorId;
-    }
 
     @Override
     public boolean equals(Object o) {

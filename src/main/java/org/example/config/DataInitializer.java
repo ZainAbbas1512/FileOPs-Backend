@@ -11,7 +11,6 @@ import java.util.List;
 @Configuration
 public class DataInitializer {
 
-    // List of default file types to insert
     private static final List<String> DEFAULT_FILE_TYPES = Arrays.asList(
             "pdf", "png", "txt", "docx", "jpg"
     );
@@ -20,8 +19,7 @@ public class DataInitializer {
     CommandLineRunner initFileTypes(FileTypeRepository fileTypeRepository) {
         return args -> {
             for (String type : DEFAULT_FILE_TYPES) {
-                // Check if the file type already exists
-                if (!fileTypeRepository.findByType(type).isPresent()) {
+                if (fileTypeRepository.findByType(type).isEmpty()) {
                     FileType fileType = new FileType();
                     fileType.setType(type);
                     fileTypeRepository.save(fileType);

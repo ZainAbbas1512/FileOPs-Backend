@@ -5,12 +5,12 @@ import org.example.domain.repository.FolderRepository;
 import org.example.domain.repository.FileTypeRepository;
 import org.example.domain.repository.FileRepository;
 import org.example.domain.repository.FolderHierarchyRepository;
+
 import org.example.dto.request.CreateFileRequest;
+
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -21,13 +21,13 @@ import java.util.*;
 
 @Service
 public class FileService {
-    private final FileRepository fileRepository; // Add this
+    private final FileRepository fileRepository;
     private final FolderRepository folderRepository;
     private final FileTypeRepository fileTypeRepository;
     private final FolderHierarchyRepository folderHierarchyRepository;
 
     @Autowired
-    public FileService(FileRepository fileRepository, // Add this
+    public FileService(FileRepository fileRepository,
                        FolderRepository folderRepository,
                        FileTypeRepository fileTypeRepository,
                        FolderHierarchyRepository folderHierarchyRepository) {
@@ -35,6 +35,11 @@ public class FileService {
         this.folderRepository = folderRepository;
         this.fileTypeRepository = fileTypeRepository;
         this.folderHierarchyRepository = folderHierarchyRepository;
+    }
+
+    @Transactional
+    public List<FileMetadata> findAll() {
+        return fileRepository.findAll();
     }
 
     @Transactional
@@ -46,7 +51,6 @@ public class FileService {
         }
 
         List<String> pathSegments = Arrays.asList(folderPath.split("/"));
-
         // Ensure root folder exists
         Folder parentFolder = ensureFolderStructure(pathSegments);
 
@@ -72,7 +76,7 @@ public class FileService {
         FileMetadata savedFile = fileRepository.save(file); // <-- Critical fix
 
         // Save to filesystem
-        saveToDisk(parentFolder, savedFile); // Use savedFile
+        saveToDisk(parentFolder, savedFile);
 
         return savedFile;
     }
@@ -86,7 +90,7 @@ public class FileService {
             // Create final copy for lambda safety
             final Folder finalCurrentParent = currentParent;
 
-            Folder folder = folderRepository.findByNameAndParent(segment, finalCurrentParent)
+            currentParent = folderRepository.findByNameAndParent(segment, finalCurrentParent)
                     .orElseGet(() -> {
                         Folder newFolder = new Folder();
                         newFolder.setName(segment);
@@ -98,8 +102,6 @@ public class FileService {
                         updateFolderHierarchy(newFolder);
                         return newFolder;
                     });
-
-            currentParent = folder;
         }
 
         return currentParent;
@@ -140,18 +142,25 @@ public class FileService {
 
     private void saveToDisk(Folder parentFolder, FileMetadata file) throws IOException {
         // 1. Define root directory (create it if missing)
-        Path rootDir = Paths.get("public").toAbsolutePath().normalize();
-        Files.createDirectories(rootDir); // Creates "public" if it doesn't exist
+        Path rootDir = Paths.get("src/main/resources/public").toAbsolutePath().normalize();
+        Files.createDirectories(rootDir);
 
-        // 2. Build folder hierarchy path
-        Path storagePath = rootDir;
+        // 2. Collect folder names in root -> parent order
+        List<String> folderNames = new ArrayList<>();
         Folder current = parentFolder;
         while (current != null) {
-            storagePath = storagePath.resolve(current.getName());
+            folderNames.add(current.getName());
             current = current.getParent();
         }
+        Collections.reverse(folderNames); // Reverse to get root first
 
-        // 3. Create directories and save file
+        // 3. Build folder hierarchy path
+        Path storagePath = rootDir;
+        for (String folderName : folderNames) {
+            storagePath = storagePath.resolve(folderName);
+        }
+
+        // 4. Create directories and save file
         Files.createDirectories(storagePath);
         Path filePath = storagePath.resolve(file.getName() + "." + file.getFileType().getType());
         Files.write(filePath, file.getData());

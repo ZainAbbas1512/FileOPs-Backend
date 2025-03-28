@@ -1,9 +1,15 @@
 package org.example.dto.request;
 
+import lombok.Getter;
+import lombok.Setter;
+
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 
+@Setter
+@Getter
 public class CreateFileRequest {
+    // Getters and Setters
     @NotBlank(message = "Name is mandatory")
     private String name;
 
@@ -19,15 +25,4 @@ public class CreateFileRequest {
     @NotBlank(message = "File type is mandatory")
     private String fileType;
 
-    // Getters and Setters
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getFolderPath() { return folderPath; }
-    public void setFolderPath(String folderPath) { this.folderPath = folderPath; }
-    public Long getSize() { return size; }
-    public void setSize(Long size) { this.size = size; }
-    public String getData() { return data; }
-    public void setData(String data) { this.data = data; }
-    public String getFileType() { return fileType; }
-    public void setFileType(String fileType) { this.fileType = fileType; }
 }

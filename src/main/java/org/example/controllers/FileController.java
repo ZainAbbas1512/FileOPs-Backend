@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
 import java.io.IOException;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/files")
@@ -22,6 +24,19 @@ public class FileController {
     @Autowired
     public FileController(FileService fileService) {
         this.fileService = fileService;
+    }
+
+    @GetMapping
+    public ResponseEntity<List<FileResponse>> getAllFiles() {
+        try {
+            List<FileMetadata> files = fileService.findAll();
+            List<FileResponse> response = files.stream()
+                    .map(this::mapToResponse)
+                    .collect(Collectors.toList());
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
     @PostMapping
