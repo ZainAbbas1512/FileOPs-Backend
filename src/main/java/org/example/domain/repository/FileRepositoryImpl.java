@@ -10,16 +10,5 @@ import java.util.List;
 
 @Repository
 @Transactional
-public class FileRepositoryImpl implements FileRepositoryCustom {
-
-    @PersistenceContext
-    private EntityManager entityManager;
-
-    @Override
-    public List<FileMetadata> findFilesLargerThan(Long size) {
-        return entityManager
-                .createQuery("SELECT f FROM FileMetadata f WHERE f.size > :size", FileMetadata.class)
-                .setParameter("size", size)
-                .getResultList();
-    }
+public class FileRepositoryImpl {
 }
