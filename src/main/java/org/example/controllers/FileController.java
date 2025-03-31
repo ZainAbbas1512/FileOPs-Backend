@@ -2,19 +2,19 @@ package org.example.controllers;
 
 import org.example.domain.model.FileMetadata;
 import org.example.domain.model.Folder;
-import org.example.dto.request.CreateFileRequest;
-import org.example.dto.request.DeleteFileRequest;
-import org.example.dto.request.FolderPathRequest;
+import org.example.dto.request.*;
 import org.example.dto.response.FileResponse;
 import org.example.services.FileService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.Errors;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -68,6 +68,70 @@ public class FileController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/find-File-By-FolderPath-And-FileName-And-FileType")
+    public ResponseEntity<?> findFileByFolderPathAndFileNameAndFileType(
+            @RequestBody FindFilesRequest request) {
+        try {
+            List<FileResponse> files = fileService.findFileByFolderPathAndFileNameAndFileType(request);
+            return ResponseEntity.ok(files);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body("Error searching files");
+        }
+    }
+
+    @PostMapping("/folder-files")
+    public ResponseEntity<?> findFilesInFolder(@RequestBody FolderFilesRequest request) {
+        try {
+            List<FileResponse> files = fileService.findAllFilesInFolder(request);
+            return ResponseEntity.ok(files);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body("Error searching files");
+        }
+    }
+
+    @PutMapping
+    public ResponseEntity<?> updateFile(@RequestBody UpdateFileRequest request) {
+        try {
+            if (request.getId() == null) {
+                throw new IllegalArgumentException("File ID is required");
+            }
+            FileResponse response = fileService.updateFile(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/by-type")
+    public ResponseEntity<?> getFilesByType(
+            @Valid @RequestBody FileTypeRequest request) {
+        try {
+            List<FileResponse> files = fileService.getAllFilesByFileType(request.getFileType());
+            return ResponseEntity.ok(files);
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(
+                    Map.of("error", ex.getMessage())
+            );
+        }
+    }
+
+    @PostMapping("/folder-files-by-type")
+    public ResponseEntity<?> findFilesInFolderByType(
+            @RequestBody FolderFilesByTypeRequest request) {
+        try {
+            List<FileResponse> files = fileService.findAllFilesInFolderByType(request);
+            return ResponseEntity.ok(files);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body("Error searching files");
         }
     }
 

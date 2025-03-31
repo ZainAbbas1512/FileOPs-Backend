@@ -5,6 +5,6 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class FolderPathRequest {
-    private String folderPath;
+public class FolderFilesRequest {
+    private String folderPath;  // e.g., "work/x/y"
 }

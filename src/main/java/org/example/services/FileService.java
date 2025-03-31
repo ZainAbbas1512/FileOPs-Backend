@@ -6,8 +6,9 @@ import org.example.domain.repository.FileTypeRepository;
 import org.example.domain.repository.FileRepository;
 import org.example.domain.repository.FolderHierarchyRepository;
 
-import org.example.dto.request.CreateFileRequest;
-import org.example.dto.request.DeleteFileRequest;
+import org.example.dto.request.*;
+
+import org.example.dto.response.FileResponse;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Timestamp;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class FileService {
@@ -96,7 +98,6 @@ public class FileService {
 
     @Transactional
     public void deleteFile(DeleteFileRequest request) {
-        // Normalize path (remove leading/trailing slashes)
         String fullPath = request.getFullPath().replaceAll("^/+|/+$", "");
 
         // Validate file type
@@ -112,6 +113,254 @@ public class FileService {
 
         // Delete from filesystem
         deleteFromDisk(file);
+    }
+
+    @Transactional(readOnly = true)
+    public List<FileResponse> findFileByFolderPathAndFileNameAndFileType(FindFilesRequest request) {
+        // Validate input
+        if (request.getFolderPath() == null || request.getFolderPath().isEmpty() ||
+                request.getFileType() == null || request.getFileType().isEmpty()) {
+            throw new IllegalArgumentException("Folder path and file type must be provided");
+        }
+
+        // Normalize the path (remove leading/trailing slashes)
+        String normalizedPath = request.getFolderPath()
+                .replaceAll("^/+|/+$", "")
+                .replaceAll("/+$", "");
+
+        // Ensure the path ends with a file name (not a folder)
+        if (normalizedPath.isEmpty() || normalizedPath.endsWith("/")) {
+            throw new IllegalArgumentException("Path must include a file name");
+        }
+
+        // Split into folder path and file name
+        String[] parts = normalizedPath.split("/");
+        String folderPath = String.join("/", Arrays.copyOf(parts, parts.length - 1)) + "/";
+        String fileName = parts[parts.length - 1];
+
+        // Find files matching the pattern
+        List<FileMetadata> files = fileRepository.findFileByFolderPathAndFileNameAndFileType(
+                folderPath + fileName,
+                request.getFileType()
+        );
+
+        return files.stream()
+                .map(this::mapToFileResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<FileResponse> findAllFilesInFolder(FolderFilesRequest request) {
+        // Validate input
+        if (request.getFolderPath() == null || request.getFolderPath().isEmpty()) {
+            throw new IllegalArgumentException("Folder path must be provided");
+        }
+
+        // Normalize the path (remove leading/trailing slashes)
+        String normalizedPath = request.getFolderPath()
+                .replaceAll("^/+|/+$", "");
+
+        System.out.println(normalizedPath);
+        // For root folder
+        if (normalizedPath.isEmpty()) {
+            Folder root = getRootFolder();
+            return fileRepository.findByFolder(root).stream()
+                    .map(this::mapToFileResponse)
+                    .collect(Collectors.toList());
+        }
+
+        // Find files directly in the specified folder (not subfolders)
+        List<FileMetadata> files = fileRepository.findAllByFolderPath(normalizedPath);
+
+        return files.stream()
+                .map(this::mapToFileResponse)
+                .collect(Collectors.toList());
+    }
+
+    private Folder getRootFolder() {
+        return folderRepository.findByNameAndParent("root", null)
+                .orElseThrow(() -> new IllegalStateException("Root folder not found"));
+    }
+
+    @Transactional
+    public FileResponse updateFile(UpdateFileRequest request) throws IOException {
+        FileMetadata file = fileRepository.findById(request.getId())
+                .orElseThrow(() -> new IllegalArgumentException("File not found"));
+
+        // Capture original state before any changes
+        Folder originalFolder = file.getFolder();
+        String originalName = file.getName();
+        FileType originalFileType = file.getFileType();
+//        byte[] originalData = file.getData().clone();
+
+        // Track changes
+        boolean nameChanged = false;
+        boolean folderChanged = false;
+        boolean typeChanged = false;
+
+        // Apply updates from the request
+        if (request.getName() != null && !request.getName().equals(originalName)) {
+            file.setName(request.getName());
+            nameChanged = true;
+        }
+        if (request.getSize() != null) {
+            file.setSize(request.getSize());
+        }
+
+        Folder newFolder;
+        if (request.getFolderPath() != null) {
+            List<String> pathSegments = Arrays.asList(
+                    request.getFolderPath().replaceAll("^/+|/+$", "").split("/")
+            );
+            newFolder = ensureFolderStructure(pathSegments);
+            if (!newFolder.equals(originalFolder)) {
+                folderChanged = true;
+                file.setFolder(newFolder);
+            }
+        }
+
+        FileType newFileType;
+        if (request.getFileType() != null) {
+            newFileType = fileTypeRepository.findByType(request.getFileType())
+                    .orElseThrow(() -> new IllegalArgumentException("Invalid file type"));
+            if (!newFileType.equals(originalFileType)) {
+                typeChanged = true;
+                file.setFileType(newFileType);
+            }
+        }
+
+        // Check for conflicts in new location (only if relevant fields changed)
+        if (folderChanged || nameChanged || typeChanged) {
+            boolean conflictExists = fileRepository.existsByNameAndFolderAndFileTypeAndIdNot(
+                    file.getName(),
+                    file.getFolder(),
+                    file.getFileType(),
+                    file.getId()
+            );
+            if (conflictExists) {
+                throw new IllegalArgumentException(
+                        "A file with the same name and type already exists in the target folder"
+                );
+            }
+        }
+
+        // Update file path based on current state
+        String newPath = constructFilePath(file.getFolder()) + "/" + file.getName();
+        file.setPath(newPath);
+        file.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+
+        // Handle data changes
+        boolean dataChanged = false;
+        if (request.getData() != null) {
+            file.setData(Base64.getDecoder().decode(request.getData()));
+            dataChanged = true;
+        }
+
+        FileMetadata savedFile = fileRepository.save(file);
+
+        // Filesystem operations
+        if (folderChanged || nameChanged || typeChanged || dataChanged) {
+            Path oldDir = buildDirectoryPath(originalFolder);
+            Path newDir = buildDirectoryPath(savedFile.getFolder());
+
+            String oldFileName = originalName + "." + originalFileType.getType();
+            String newFileName = savedFile.getName() + "." + savedFile.getFileType().getType();
+
+            // Delete old file if location changed
+            if (folderChanged || nameChanged || typeChanged) {
+                Path oldFilePath = oldDir.resolve(oldFileName);
+                Files.deleteIfExists(oldFilePath);
+            }
+
+            // Write new file
+            Files.createDirectories(newDir);
+            Path newFilePath = newDir.resolve(newFileName);
+            Files.write(newFilePath, savedFile.getData());
+        }
+
+        return mapToFileResponse(savedFile);
+    }
+
+    @Transactional(readOnly = true)
+    public List<FileResponse> getAllFilesByFileType(String fileType) {
+        // Validate input
+        if (fileType == null || fileType.isEmpty()) {
+            throw new IllegalArgumentException("File type must be provided");
+        }
+
+        // Verify file type exists
+        FileType type = fileTypeRepository.findByType(fileType)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid file type: " + fileType));
+
+        // Find all files with this type
+        List<FileMetadata> files = fileRepository.findByFileType(type);
+
+        return files.stream()
+                .map(this::mapToFileResponse)
+                .collect(Collectors.toList());
+    }
+
+    private Path buildDirectoryPath(Folder folder) {
+        Path dirPath = Paths.get("public").toAbsolutePath().normalize();
+
+        List<String> folderNames = new ArrayList<>();
+        Folder current = folder;
+        while (current != null && !isRootFolder(current)) {
+            folderNames.add(current.getName());
+            current = current.getParent();
+        }
+        Collections.reverse(folderNames);
+
+        for (String name : folderNames) {
+            dirPath = dirPath.resolve(name);
+        }
+
+        return dirPath;
+    }
+
+    @Transactional(readOnly = true)
+    public List<FileResponse> findAllFilesInFolderByType(FolderFilesByTypeRequest request) {
+        // Validate input
+        if (request.getFolderPath() == null || request.getFolderPath().isEmpty()) {
+            throw new IllegalArgumentException("Folder path must be provided");
+        }
+        if (request.getFileType() == null || request.getFileType().isEmpty()) {
+            throw new IllegalArgumentException("File type must be provided");
+        }
+
+        // Normalize the path
+        String normalizedPath = request.getFolderPath().replaceAll("^/+|/+$", "");
+
+        // For root folder
+        if (normalizedPath.isEmpty()) {
+            Folder root = getRootFolder();
+            return fileRepository.findByFolderAndFileTypeType(root, request.getFileType())
+                    .stream()
+                    .map(this::mapToFileResponse)
+                    .collect(Collectors.toList());
+        }
+
+        // Find files in the specified folder with matching type
+        List<FileMetadata> files = fileRepository.findAllByFolderPathAndFileType(
+                normalizedPath,
+                request.getFileType()
+        );
+
+        return files.stream()
+                .map(this::mapToFileResponse)
+                .collect(Collectors.toList());
+    }
+
+    private FileResponse mapToFileResponse(FileMetadata file) {
+        FileResponse response = new FileResponse();
+        response.setId(file.getId());
+        response.setName(file.getName());
+        response.setPath(file.getPath());
+        response.setSize(file.getSize());
+        response.setCreatedAt(file.getCreatedAt());
+        response.setUpdatedAt(file.getUpdatedAt());
+        response.setFileType(file.getFileType().getType());
+        return response;
     }
 
     private void deleteFromDisk(FileMetadata file) {

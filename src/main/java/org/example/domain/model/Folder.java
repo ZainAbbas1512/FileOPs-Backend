@@ -36,4 +36,6 @@ public class Folder {
 
     public Folder() {}
 
+    public void setPath(String s) {
+    }
 }
