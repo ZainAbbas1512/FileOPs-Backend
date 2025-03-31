@@ -13,7 +13,6 @@ public class CreateFileRequest {
     @NotBlank(message = "Name is mandatory")
     private String name;
 
-    @NotBlank(message = "Folder path is mandatory")
     private String folderPath;
 
     @NotNull(message = "Size is mandatory")

@@ -7,6 +7,7 @@ import org.example.domain.repository.FileRepository;
 import org.example.domain.repository.FolderHierarchyRepository;
 
 import org.example.dto.request.CreateFileRequest;
+import org.example.dto.request.DeleteFileRequest;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -44,17 +45,35 @@ public class FileService {
 
     @Transactional
     public FileMetadata createFile(CreateFileRequest request) throws IOException {
-        // Handle null/empty folderPath (default to "root")
-        String folderPath = request.getFolderPath();
-        if (folderPath == null || folderPath.trim().isEmpty()) {
-            folderPath = "root"; // Default to root folder
-        }
+        // Handle folder path preprocessing
+        String folderPath = request.getFolderPath() != null
+                ? request.getFolderPath().trim().replaceAll("^/+|/+$", "")
+                : "";
 
-        List<String> pathSegments = Arrays.asList(folderPath.split("/"));
-        // Ensure root folder exists
+        List<String> pathSegments = folderPath.isEmpty()
+                ? Collections.emptyList()
+                : Arrays.asList(folderPath.split("/"));
+
+        // Get or create folder structure
         Folder parentFolder = ensureFolderStructure(pathSegments);
 
-        // Create file metadata
+        // Validate file type
+        FileType fileType = fileTypeRepository.findByType(request.getFileType())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid file type"));
+
+        // Check for duplicate name + type in same folder
+        if (fileRepository.existsByNameAndFolderAndFileType(
+                request.getName(),
+                parentFolder,
+                fileType
+        )) {
+            throw new IllegalArgumentException(
+                    "File '" + request.getName() + "." + fileType.getType() +
+                            "' already exists in this folder"
+            );
+        }
+
+        // Create file entity
         FileMetadata file = new FileMetadata();
         file.setName(request.getName());
         file.setSize(request.getSize());
@@ -62,32 +81,62 @@ public class FileService {
         file.setData(Base64.getDecoder().decode(request.getData()));
         file.setCreatedAt(new Timestamp(System.currentTimeMillis()));
         file.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+        file.setFileType(fileType);  // Use the already retrieved fileType
 
-        // Compute and set the full path
+        // Build path: root/folder1/folder2/filename
         String computedPath = constructFilePath(parentFolder) + "/" + request.getName();
         file.setPath(computedPath);
 
-        // Set file type
-        FileType fileType = fileTypeRepository.findByType(request.getFileType())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid file type"));
-        file.setFileType(fileType);
-
-        // Save to database (UNCOMMENT THIS LINE)
-        FileMetadata savedFile = fileRepository.save(file); // <-- Critical fix
-
-        // Save to filesystem
+        // Persist and save
+        FileMetadata savedFile = fileRepository.save(file);
         saveToDisk(parentFolder, savedFile);
 
         return savedFile;
+    }
+
+    @Transactional
+    public void deleteFile(DeleteFileRequest request) {
+        // Normalize path (remove leading/trailing slashes)
+        String fullPath = request.getFullPath().replaceAll("^/+|/+$", "");
+
+        // Validate file type
+        FileType fileType = fileTypeRepository.findByType(request.getFileType())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid file type"));
+
+        // Find file by path and type
+        FileMetadata file = fileRepository.findByPathAndFileType(fullPath, fileType)
+                .orElseThrow(() -> new IllegalArgumentException("File not found"));
+
+        // Delete from database
+        fileRepository.delete(file);
+
+        // Delete from filesystem
+        deleteFromDisk(file);
+    }
+
+    private void deleteFromDisk(FileMetadata file) {
+        try {
+            Path filePath = Paths.get("public")
+                    .resolve(file.getPath() + "." + file.getFileType().getType());
+            System.out.println(filePath );
+
+            Path rootPath = Paths.get("public").resolve("root");
+            if (filePath.startsWith(rootPath)) {
+                filePath = filePath.subpath(rootPath.getNameCount(), filePath.getNameCount());
+                filePath = Paths.get("public").resolve(filePath);
+
+                System.out.println("File path after removing 'root': " + filePath);
+            }
+            Files.deleteIfExists(filePath);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to delete file from filesystem", e);
+        }
     }
 
     private Folder ensureFolderStructure(List<String> pathSegments) {
         Folder currentParent = null;
 
         for (String segment : pathSegments) {
-            if (segment.isEmpty()) continue;
-
-            // Create final copy for lambda safety
             final Folder finalCurrentParent = currentParent;
 
             currentParent = folderRepository.findByNameAndParent(segment, finalCurrentParent)
@@ -102,6 +151,10 @@ public class FileService {
                         updateFolderHierarchy(newFolder);
                         return newFolder;
                     });
+        }
+        if (currentParent == null) {
+            currentParent = folderRepository.findByNameAndParent("root", null)
+                    .orElseThrow(() -> new IllegalStateException("Root folder not found"));
         }
 
         return currentParent;
@@ -141,28 +194,29 @@ public class FileService {
     }
 
     private void saveToDisk(Folder parentFolder, FileMetadata file) throws IOException {
-        // 1. Define root directory (create it if missing)
-        Path rootDir = Paths.get("src/main/resources/public").toAbsolutePath().normalize();
+        Path rootDir = Paths.get("public").toAbsolutePath().normalize();
         Files.createDirectories(rootDir);
 
-        // 2. Collect folder names in root -> parent order
+        // Skip "root" folder name in filesystem path
         List<String> folderNames = new ArrayList<>();
         Folder current = parentFolder;
-        while (current != null) {
+        while (current != null && !isRootFolder(current)) {
             folderNames.add(current.getName());
             current = current.getParent();
         }
-        Collections.reverse(folderNames); // Reverse to get root first
+        Collections.reverse(folderNames);
 
-        // 3. Build folder hierarchy path
         Path storagePath = rootDir;
         for (String folderName : folderNames) {
             storagePath = storagePath.resolve(folderName);
         }
 
-        // 4. Create directories and save file
         Files.createDirectories(storagePath);
         Path filePath = storagePath.resolve(file.getName() + "." + file.getFileType().getType());
         Files.write(filePath, file.getData());
+    }
+
+    private boolean isRootFolder(Folder folder) {
+        return "root".equals(folder.getName()) && folder.getParent() == null;
     }
 }

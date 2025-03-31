@@ -3,6 +3,8 @@ package org.example.controllers;
 import org.example.domain.model.FileMetadata;
 import org.example.domain.model.Folder;
 import org.example.dto.request.CreateFileRequest;
+import org.example.dto.request.DeleteFileRequest;
+import org.example.dto.request.FolderPathRequest;
 import org.example.dto.response.FileResponse;
 import org.example.services.FileService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +26,11 @@ public class FileController {
     @Autowired
     public FileController(FileService fileService) {
         this.fileService = fileService;
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<?> handleIllegalArgumentException(IllegalArgumentException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.getMessage());
     }
 
     @GetMapping
@@ -52,9 +59,21 @@ public class FileController {
         }
     }
 
+    @DeleteMapping
+    public ResponseEntity<?> deleteFile(@Valid @RequestBody DeleteFileRequest request) {
+        try {
+            fileService.deleteFile(request);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(e.getMessage());
+        }
+    }
+
     private FileResponse mapToResponse(FileMetadata file) {
         FileResponse response = new FileResponse();
-        response.setId(file.getId().toString());
+        response.setId(file.getId());
         response.setName(file.getName());
         response.setPath(constructFilePath(file.getFolder()));
         response.setSize(file.getSize());

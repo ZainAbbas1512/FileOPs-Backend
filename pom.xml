@@ -42,8 +42,9 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <scope>runtime</scope>
+            <version>42.3.7</version> <!-- or latest version -->
         </dependency>
+
 
         <!-- Lombok (Optional: for reducing boilerplate code) -->
         <dependency>

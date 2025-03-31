@@ -13,7 +13,7 @@ import java.util.UUID;
 @Setter
 @Entity
 @Table(name = "file", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"folder_id", "name"})
+        @UniqueConstraint(columnNames = {"folder_id", "name", "file_type_id"}) // Updated constraint
 })
 public class FileMetadata {
 
