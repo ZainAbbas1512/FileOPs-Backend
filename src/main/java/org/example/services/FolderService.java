@@ -47,15 +47,21 @@ public class FolderService {
             throw new IllegalArgumentException("Invalid path");
         }
 
-        List<String> parentSegments = segments.subList(0, segments.size()-1);
-        String folderName = segments.get(segments.size()-1);
+        List<String> parentSegments = segments.subList(0, segments.size() - 1);
+        String folderName = segments.get(segments.size() - 1);
 
-        Folder parent = ensureFolderStructure(parentSegments);
+        // Start traversal from root folder
+        Folder parent = getRootFolder(); // Default to root if no parent segments
+        if (!parentSegments.isEmpty()) {
+            parent = traverseFolderHierarchy(parentSegments);
+        }
 
+        // Check for existing folder
         if (folderRepository.existsByNameAndParent(folderName, parent)) {
             throw new IllegalArgumentException("Folder already exists in this location");
         }
 
+        // Create and save the new folder
         Folder folder = new Folder();
         folder.setName(folderName);
         folder.setParent(parent);
@@ -67,6 +73,22 @@ public class FolderService {
         createFolderOnFilesystem(savedFolder);
 
         return mapToResponse(savedFolder);
+    }
+
+    private Folder traverseFolderHierarchy(List<String> pathSegments) {
+        Folder current = getRootFolder(); // Start from root
+        for (String segment : pathSegments) {
+            current = folderRepository.findByNameAndParent(segment, current)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Parent folder path '" + segment + "' does not exist. Create parent folders first."
+                    ));
+        }
+        return current;
+    }
+
+    private Folder getRootFolder() {
+        return folderRepository.findByNameAndParent("root", null)
+                .orElseThrow(() -> new IllegalStateException("Root folder not found"));
     }
 
     @Transactional
@@ -98,17 +120,72 @@ public class FolderService {
         Folder folder = folderRepository.findById(folderId)
                 .orElseThrow(() -> new IllegalArgumentException("Folder not found"));
 
-        List<UUID> descendantIds = folderHierarchyRepository.findDescendantIds(folderId);
+        // 1. Get all descendant folders including self
+        List<UUID> allFolderIds = folderHierarchyRepository.findDescendantIds(folderId);
+        allFolderIds.add(folderId); // Include parent folder
 
-        // Delete files
-        fileRepository.deleteAllByFolderIdIn(descendantIds);
+        // 2. Delete files first
+        fileRepository.deleteAllByFolderIdIn(allFolderIds);
 
-        // Delete folders
-        folderRepository.deleteAllById(descendantIds);
+        // 3. Delete hierarchy relationships
+        folderHierarchyRepository.deleteByFolderIdIn(allFolderIds);
+        folderHierarchyRepository.deleteByAncestorIdIn(allFolderIds);
 
-        // Delete filesystem structure
-        deleteFolderFromFilesystem(folder);
+        // 4. Delete folders in reverse depth order
+        List<Folder> foldersToDelete = folderRepository.findAllById(allFolderIds);
+        foldersToDelete.sort(Comparator.comparingInt(this::getFolderDepth).reversed());
+        folderRepository.deleteAll(foldersToDelete);
+
+        // 5. Filesystem cleanup
+        deleteFolderStructureFromFilesystem(folder);
     }
+
+    // Get folder depth using hierarchy data
+    private int getFolderDepth(Folder folder) {
+        return folderHierarchyRepository.findByFolderId(folder.getId())
+                .stream()
+                .mapToInt(FolderHierarchy::getDepth)
+                .max()
+                .orElse(0);
+    }
+
+    private void deleteFolderStructureFromFilesystem(Folder folder) throws IOException {
+        Path dirPath = buildDirectoryPath(folder);
+        if (Files.exists(dirPath)) {
+            Files.walk(dirPath)
+                    .sorted(Comparator.reverseOrder())
+                    .forEach(path -> {
+                        try {
+                            Files.delete(path);
+                        } catch (IOException e) {
+                            throw new RuntimeException("Failed to delete: " + path, e);
+                        }
+                    });
+        }
+    }
+
+    private Path buildDirectoryPath(Folder folder) {
+        Path basePath = Paths.get("public").toAbsolutePath().normalize();
+        List<String> pathSegments = new ArrayList<>();
+
+        Folder current = folder;
+        while (current != null && !isRootFolder(current)) {
+            pathSegments.add(current.getName());
+            current = current.getParent();
+        }
+
+        Collections.reverse(pathSegments);
+        for (String segment : pathSegments) {
+            basePath = basePath.resolve(segment);
+        }
+
+        return basePath;
+    }
+
+    private boolean isRootFolder(Folder folder) {
+        return "root".equals(folder.getName()) && folder.getParent() == null;
+    }
+
 
     @Transactional(readOnly = true)
     public List<FolderResponse> getFoldersByParent(UUID parentId) {
@@ -211,18 +288,18 @@ public class FolderService {
         Files.move(oldPath, newPath);
     }
 
-    private void deleteFolderFromFilesystem(Folder folder) throws IOException {
-        Path dirPath = buildFolderPath(folder);
-        Files.walk(dirPath)
-                .sorted(Comparator.reverseOrder())
-                .forEach(path -> {
-                    try {
-                        Files.deleteIfExists(path);
-                    } catch (IOException e) {
-                        throw new RuntimeException("Failed to delete file: " + path, e);
-                    }
-                });
-    }
+//    private void deleteFolderFromFilesystem(Folder folder) throws IOException {
+//        Path dirPath = buildFolderPath(folder);
+//        Files.walk(dirPath)
+//                .sorted(Comparator.reverseOrder())
+//                .forEach(path -> {
+//                    try {
+//                        Files.deleteIfExists(path);
+//                    } catch (IOException e) {
+//                        throw new RuntimeException("Failed to delete file: " + path, e);
+//                    }
+//                });
+//    }
 
     private FolderResponse mapToResponse(Folder folder) {
         FolderResponse response = new FolderResponse();

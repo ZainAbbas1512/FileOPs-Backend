@@ -2,14 +2,12 @@ package org.example.dto.request;
 import lombok.Getter;
 import lombok.Setter;
 
-import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.NotNull;
+import java.util.UUID;
 
 @Setter
 @Getter
 public class DeleteFileRequest {
-    @NotBlank(message = "Full path is mandatory")
-    private String fullPath; // e.g., "wor/x/y/x/y/file2"
-
-    @NotBlank(message = "File type is mandatory")
-    private String fileType;
+    @NotNull(message = "File ID is mandatory")
+    private UUID id;
 }

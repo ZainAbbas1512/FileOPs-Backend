@@ -12,12 +12,14 @@ import org.springframework.web.server.ResponseStatusException;
 
 import javax.validation.Valid;
 import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/folders")
+@CrossOrigin(origins = "http://localhost:5500")
 public class FolderController {
 
     private final FolderService folderService;
@@ -45,11 +47,10 @@ public class FolderController {
     }
 
     @PutMapping("/{folderId}/rename")
-    public ResponseEntity<?> renameFolder(@PathVariable String folderId,
+    public ResponseEntity<?> renameFolder(@PathVariable UUID folderId,
                                           @Valid @RequestBody RenameFolderRequest request) {
         try {
-            UUID uuid = UUID.fromString(folderId);
-            return ResponseEntity.ok(folderService.renameFolder(uuid, request.getNewName()));
+            return ResponseEntity.ok(folderService.renameFolder(folderId, request.getNewName()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid folder ID"));
         } catch (IOException e) {
@@ -59,10 +60,9 @@ public class FolderController {
     }
 
     @DeleteMapping("/{folderId}")
-    public ResponseEntity<?> deleteFolder(@PathVariable String folderId) {
+    public ResponseEntity<?> deleteFolder(@PathVariable UUID folderId) {
         try {
-            UUID uuid = UUID.fromString(folderId);
-            folderService.deleteFolder(uuid);
+            folderService.deleteFolder(folderId);
             return ResponseEntity.noContent().build();
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid folder ID"));
@@ -72,13 +72,23 @@ public class FolderController {
         }
     }
 
-    @GetMapping("/by-parent")
-    public List<FolderResponse> getByParent(@RequestParam(required = false) String parentId) {
+    @GetMapping("/get-all-folders-of-specific-folder/{id}")
+    public ResponseEntity<?> getFoldersByParent(@PathVariable UUID id) {
         try {
-            UUID parentUuid = parentId != null ? UUID.fromString(parentId) : null;
-            return folderService.getFoldersByParent(parentUuid);
+            List<FolderResponse> response = folderService.getFoldersByParent(id);
+            return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid parent ID");
+            return ResponseEntity.badRequest().body(Map.of(
+                    "status", HttpStatus.BAD_REQUEST.value(),
+                    "message", e.getMessage(),
+                    "timestamp", Instant.now()
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "status", HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                    "message", "Error processing request",
+                    "timestamp", Instant.now()
+            ));
         }
     }
 }

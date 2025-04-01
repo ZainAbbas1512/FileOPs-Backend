@@ -8,8 +8,9 @@ import org.example.domain.repository.FolderHierarchyRepository;
 
 import org.example.dto.request.*;
 
-import org.example.dto.response.FileResponse;
+import org.example.dto.response.*;
 
+import org.hibernate.validator.constraints.URL;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,8 +57,20 @@ public class FileService {
                 ? Collections.emptyList()
                 : Arrays.asList(folderPath.split("/"));
 
-        // Get or create folder structure
-        Folder parentFolder = ensureFolderStructure(pathSegments);
+        // Verify existing folder structure
+        Folder parentFolder;
+        if (pathSegments.isEmpty()) {
+            parentFolder = getRootFolder();
+        } else {
+            Folder current = getRootFolder();
+            for (String segment : pathSegments) {
+                current = folderRepository.findByNameAndParent(segment, current)
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "Folder path '" + segment + "' does not exist. Create the folder first."
+                        ));
+            }
+            parentFolder = current;
+        }
 
         // Validate file type
         FileType fileType = fileTypeRepository.findByType(request.getFileType())
@@ -97,18 +110,10 @@ public class FileService {
     }
 
     @Transactional
-    public void deleteFile(DeleteFileRequest request) {
-        String fullPath = request.getFullPath().replaceAll("^/+|/+$", "");
-
-        // Validate file type
-        FileType fileType = fileTypeRepository.findByType(request.getFileType())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid file type"));
-
-        // Find file by path and type
-        FileMetadata file = fileRepository.findByPathAndFileType(fullPath, fileType)
+    public void deleteFile(DeleteFileRequest request) throws IOException {
+        FileMetadata file = fileRepository.findById(request.getId())
                 .orElseThrow(() -> new IllegalArgumentException("File not found"));
 
-        // Delete from database
         fileRepository.delete(file);
 
         // Delete from filesystem
@@ -116,37 +121,11 @@ public class FileService {
     }
 
     @Transactional(readOnly = true)
-    public List<FileResponse> findFileByFolderPathAndFileNameAndFileType(FindFilesRequest request) {
-        // Validate input
-        if (request.getFolderPath() == null || request.getFolderPath().isEmpty() ||
-                request.getFileType() == null || request.getFileType().isEmpty()) {
-            throw new IllegalArgumentException("Folder path and file type must be provided");
-        }
+    public FileResponse getFileById(UUID id) {
+        FileMetadata file = fileRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("File not found with ID: " + id));
 
-        // Normalize the path (remove leading/trailing slashes)
-        String normalizedPath = request.getFolderPath()
-                .replaceAll("^/+|/+$", "")
-                .replaceAll("/+$", "");
-
-        // Ensure the path ends with a file name (not a folder)
-        if (normalizedPath.isEmpty() || normalizedPath.endsWith("/")) {
-            throw new IllegalArgumentException("Path must include a file name");
-        }
-
-        // Split into folder path and file name
-        String[] parts = normalizedPath.split("/");
-        String folderPath = String.join("/", Arrays.copyOf(parts, parts.length - 1)) + "/";
-        String fileName = parts[parts.length - 1];
-
-        // Find files matching the pattern
-        List<FileMetadata> files = fileRepository.findFileByFolderPathAndFileNameAndFileType(
-                folderPath + fileName,
-                request.getFileType()
-        );
-
-        return files.stream()
-                .map(this::mapToFileResponse)
-                .collect(Collectors.toList());
+        return mapToFileResponse(file);
     }
 
     @Transactional(readOnly = true)

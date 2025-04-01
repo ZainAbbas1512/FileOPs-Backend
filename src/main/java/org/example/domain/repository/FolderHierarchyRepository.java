@@ -18,4 +18,8 @@ public interface FolderHierarchyRepository extends JpaRepository<FolderHierarchy
     List<UUID> findDescendantIds(@Param("ancestorId") UUID ancestorId);
 
     List<FolderHierarchy> findByAncestorId(UUID id);
+
+    void deleteByFolderIdIn(List<UUID> allFolderIds);
+
+    void deleteByAncestorIdIn(List<UUID> allFolderIds);
 }

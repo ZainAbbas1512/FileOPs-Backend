@@ -15,10 +15,12 @@ import javax.validation.Valid;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/files")
+@CrossOrigin(origins = "http://localhost:5500")
 public class FileController {
 
     private final FileService fileService;
@@ -63,7 +65,7 @@ public class FileController {
     public ResponseEntity<?> deleteFile(@Valid @RequestBody DeleteFileRequest request) {
         try {
             fileService.deleteFile(request);
-            return ResponseEntity.ok().build();
+            return ResponseEntity.ok(Map.of("message", "File deleted successfully"));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         } catch (Exception e) {
@@ -71,16 +73,15 @@ public class FileController {
         }
     }
 
-    @PostMapping("/find-File-By-FolderPath-And-FileName-And-FileType")
-    public ResponseEntity<?> findFileByFolderPathAndFileNameAndFileType(
-            @RequestBody FindFilesRequest request) {
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getFileById(@PathVariable UUID id) {
         try {
-            List<FileResponse> files = fileService.findFileByFolderPathAndFileNameAndFileType(request);
-            return ResponseEntity.ok(files);
+            FileResponse response = fileService.getFileById(id);
+            return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body("Error searching files");
+            return ResponseEntity.internalServerError().body("Error retrieving file");
         }
     }
 
