@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import javax.validation.constraints.NotNull;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -14,6 +15,9 @@ import java.util.UUID;
 public interface FileRepository extends JpaRepository<FileMetadata, UUID> {
     boolean existsByNameAndFolderAndFileType(String name, Folder folder, FileType fileType);
     Optional<FileMetadata> findByPathAndFileType(String path, FileType fileType);
+
+    List<FileMetadata> findAll();
+
     List<FileMetadata> findByFolder(Folder folder);
     @Query("SELECT f FROM FileMetadata f WHERE " +
             "f.path LIKE CONCAT(:folderPath, '%') AND " +

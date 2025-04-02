@@ -10,7 +10,6 @@ import org.example.dto.request.*;
 
 import org.example.dto.response.*;
 
-import org.hibernate.validator.constraints.URL;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -110,7 +109,7 @@ public class FileService {
     }
 
     @Transactional
-    public void deleteFile(DeleteFileRequest request) throws IOException {
+    public void deleteFile(DeleteFileRequest request) {
         FileMetadata file = fileRepository.findById(request.getId())
                 .orElseThrow(() -> new IllegalArgumentException("File not found"));
 

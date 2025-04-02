@@ -1,14 +1,15 @@
 package org.example.controllers;
 
 import org.example.domain.model.FileMetadata;
+import org.example.domain.model.FileType;
 import org.example.domain.model.Folder;
 import org.example.dto.request.*;
 import org.example.dto.response.FileResponse;
+import org.example.dto.response.FileTypeResponse;
 import org.example.services.FileService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.Errors;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
@@ -140,10 +141,18 @@ public class FileController {
         FileResponse response = new FileResponse();
         response.setId(file.getId());
         response.setName(file.getName());
+        response.setFileType(mapFileTypeToResponse(file.getFileType()).getType());
         response.setPath(constructFilePath(file.getFolder()));
         response.setSize(file.getSize());
         response.setCreatedAt(file.getCreatedAt());
         response.setUpdatedAt(file.getUpdatedAt());
+        return response;
+    }
+
+    private FileTypeResponse mapFileTypeToResponse(FileType fileType) {
+        FileTypeResponse response = new FileTypeResponse();
+        response.setId(fileType.getId());
+        response.setType(fileType.getType());
         return response;
     }
 

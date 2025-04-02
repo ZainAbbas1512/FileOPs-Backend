@@ -196,7 +196,7 @@ public class FolderService {
 
         return folderRepository.findByParent(parent)
                 .stream()
-                .map(this::mapToResponse)  // Explicit lambda with Folder type
+                .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
 
