@@ -19,7 +19,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/folders")
-@CrossOrigin(origins = "http://localhost:5500")
+@CrossOrigin(origins = "http://localhost:3000")
 public class FolderController {
 
     private final FolderService folderService;
@@ -63,7 +63,8 @@ public class FolderController {
     public ResponseEntity<?> deleteFolder(@PathVariable UUID folderId) {
         try {
             folderService.deleteFolder(folderId);
-            return ResponseEntity.noContent().build();
+            // Return a response with a message for frontend consistency
+            return ResponseEntity.ok(Map.of("message", "Folder deleted successfully"));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid folder ID"));
         } catch (IOException e) {

@@ -16,7 +16,7 @@ import java.util.List;
 public class DataInitializer {
 
     private static final List<String> DEFAULT_FILE_TYPES = Arrays.asList(
-            "pdf", "png", "txt", "docx", "jpg"
+            "pdf", "png", "txt", "docx", "jpg", "py"
     );
     @Bean
     CommandLineRunner initRootFolder(FolderRepository folderRepository) {

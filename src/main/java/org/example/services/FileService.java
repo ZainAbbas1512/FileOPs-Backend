@@ -138,7 +138,6 @@ public class FileService {
         String normalizedPath = request.getFolderPath()
                 .replaceAll("^/+|/+$", "");
 
-        System.out.println(normalizedPath);
         // For root folder
         if (normalizedPath.isEmpty()) {
             Folder root = getRootFolder();
@@ -345,14 +344,12 @@ public class FileService {
         try {
             Path filePath = Paths.get("public")
                     .resolve(file.getPath() + "." + file.getFileType().getType());
-            System.out.println(filePath );
 
             Path rootPath = Paths.get("public").resolve("root");
             if (filePath.startsWith(rootPath)) {
                 filePath = filePath.subpath(rootPath.getNameCount(), filePath.getNameCount());
                 filePath = Paths.get("public").resolve(filePath);
 
-                System.out.println("File path after removing 'root': " + filePath);
             }
             Files.deleteIfExists(filePath);
         } catch (IOException e) {
